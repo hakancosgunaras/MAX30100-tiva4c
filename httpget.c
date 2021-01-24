@@ -504,6 +504,10 @@ Void heartBeatTask (UArg arg1, UArg arg2){
                     filtered_result = filtered_w - prev_w;
                     ir[i]=(uint16_t)filtered_result;
 
+            /*Mean Median Filter code here
+             * Butterworth filter code here
+             * BPM calculation here(the time between the two peaks)
+             *
                 }
                  */
 
