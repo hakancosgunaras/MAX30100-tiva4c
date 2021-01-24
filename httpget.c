@@ -433,8 +433,9 @@ Void heartBeatTask (UArg arg1, UArg arg2){
     char a_full;
     float bpm;
     long average=0;
-    //DC filter values
-    float filtered_w,prev_w,filtered_result,x;
+
+    // DC filter variables
+    float filtered_w,prev_w=0,filtered_result[16];
     float alpha=0.95; // Response constant of the filter
     /*  DC Filter
      * w(t)= x(t)+alpha*w(t-1)
@@ -446,7 +447,11 @@ Void heartBeatTask (UArg arg1, UArg arg2){
      *
      */
 
-
+/*
+    //Mean filter variables
+    float M,m_sum,m_avg=0,m_result;
+    int m_index,m_count;
+*/
     IIC_OpenComm();
 
     IIC_readReg(MAX30100_ID, 0xFF,1,buf);
@@ -494,22 +499,12 @@ Void heartBeatTask (UArg arg1, UArg arg2){
             for (i = 0; i < 16; i++)
             {
                 ir[i] = (uint16_t) ((buf[(i * 4)] << 8) | buf[(i * 4) + 1]); //Getting data into array
-                //ir[i]= (uint16_t)((buf[i*4]*16)+buf[(i*4)+1]);
-                average += ir[i];
-                /*//DC filter
-                  if(i>0){
-                    filtered_w = ir[i];
-                    prev_w = ir[i-1];
-                    filtered_w = x + alpha*prev_w;
-                    filtered_result = filtered_w - prev_w;
-                    ir[i]=(uint16_t)filtered_result;
 
-            /*Mean Median Filter code here
-             * Butterworth filter code here
-             * BPM calculation here(the time between the two peaks)
-             *
-                }
-                 */
+                //Extracting DC offset
+                filtered_w = ir[i] + alpha * prev_w;
+                filtered_result[i] = filtered_w - prev_w;
+                prev_w = filtered_w;
+                average += filtered_result[i];
 
             }
 
@@ -517,13 +512,7 @@ Void heartBeatTask (UArg arg1, UArg arg2){
             bpm=average;
             System_printf("average degeri %d \n", average);
             average = 0;
-            /*
-            for (i = 0; i < 16; i++)
-            {
-                System_printf("16 sample degeri %d , \n", ir[i]);
-                //System_printf("ilk 6 sample degeri %d , %d , %d , %d , %d , %d\n", ir[0], ir[1],ir[2],ir[3],ir[4],ir[5]);
-            }
-             */
+
             System_flush();
 
         }
@@ -544,6 +533,19 @@ Void heartBeatTask (UArg arg1, UArg arg2){
         System_flush();
 }
 
+/*
+ int year, month, day, hour, minutes, seconds;
+ Void Timer_ISR(UArg arg1) // executed every second
+ {
+ // post semaphore
+ SWI_post(swi1);
+ }
+ Void SWI_ISR(UArg arg1)
+ {
+ // update seconds, then minutes if seconds exceeds 60
+ // update others if necessary
+ }
+ */
 
 /*
  *  ======== main ========
