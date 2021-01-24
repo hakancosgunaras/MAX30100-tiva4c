@@ -51,7 +51,7 @@
 
 
 #define HOSTNAME          "api.openweathermap.org"
-#define REQUEST_URI       "/data/2.5/forecast/?id=315202&APPID=b9bdaf75a7b1e96362a172ec83cb9303"
+#define REQUEST_URI       "/data/2.5/forecast/?id=315202&APPID="
 #define USER_AGENT        "HTTPCli (ARM; TI-RTOS)"
 #define SOCKETTEST_IP     "192.168.1.34" //My launchpads IP address
 #define TASKSTACKSIZE     4096
