@@ -50,9 +50,7 @@
 //
 
 
-#define HOSTNAME          "api.openweathermap.org"
-#define REQUEST_URI       "/data/2.5/forecast/?id=315202&APPID="
-#define USER_AGENT        "HTTPCli (ARM; TI-RTOS)"
+
 #define SOCKETTEST_IP     "192.168.1.34" //My launchpads IP address
 #define TASKSTACKSIZE     4096
 #define OUTGOING_PORT     5011
@@ -63,6 +61,15 @@
 extern Semaphore_Handle semaphore0;     // posted by httpTask and pended by clientTask
 extern Semaphore_Handle semaphore1;
 extern Mailbox_Handle mailbox0;
+/*
+extern Semaphore_Handle semaphore2;
+extern Semaphore_Handle semaphore3;
+extern Swi_Handle swi0;
+char temp_time[32];
+int instant_time;
+int ctr;
+int printTime;
+*/
 
 char   tempstr[20];                     // temperature string
 
@@ -112,6 +119,11 @@ bool sendData2Server(char *serverIP, int serverPort, char *data, int size)
     return retval;
 }
 
+Void httpTask(UArg arg0, UArg arg1)
+{
+    //do nothing
+}
+
 Void clientSocketTask(UArg arg0, UArg arg1)
 {
     while(1) {
@@ -134,14 +146,7 @@ Void clientSocketTask(UArg arg0, UArg arg1)
     }
 }
 
-void getTimeStr(char *str)
-{
-    // dummy get time as string function
-    // time needs to be gotten from NTP servers
-    // This code needs to be improved
-    //
-    strcpy(str, "2021-01-07 12:34:56");
-}
+
 
 float getTemperature(void)
 {
@@ -153,16 +158,20 @@ float getTemperature(void)
 
 Void serverSocketTask(UArg arg0, UArg arg1)
 {
+
+    float temp;
+
     int serverfd, new_socket, valread, len;
     struct sockaddr_in serverAddr, clientAddr;
-    float temp;
     char buffer[30];
     char outstr[30], tmpstr[30];
     bool quit_protocol;
 
     serverfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (serverfd == -1) {
-        System_printf("serverSocketTask::Socket not created.. quiting the task.\n");
+    if (serverfd == -1)
+    {
+        System_printf(
+                "serverSocketTask::Socket not created.. quiting the task.\n");
         return;     // we just quit the tasks. nothing else to do.
     }
 
@@ -173,20 +182,23 @@ Void serverSocketTask(UArg arg0, UArg arg1)
 
     // Attaching socket to the port
     //
-    if (bind(serverfd, (struct sockaddr *)&serverAddr,  sizeof(serverAddr))<0) {
-         System_printf("serverSocketTask::bind failed..\n");
+    if (bind(serverfd, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
+    {
+        System_printf("serverSocketTask::bind failed..\n");
 
-         // nothing else to do, since without bind nothing else works
-         // we need to terminate the task
-         return;
+        // nothing else to do, since without bind nothing else works
+        // we need to terminate the task
+        return;
     }
-    if (listen(serverfd, 3) < 0) {
+    if (listen(serverfd, 3) < 0)
+    {
 
         System_printf("serverSocketTask::listen() failed\n");
         // nothing else to do, since without bind nothing else works
         // we need to terminate the task
         return;
     }
+
 
     while(1) {
 
@@ -232,11 +244,6 @@ Void serverSocketTask(UArg arg0, UArg arg1)
                 strcat(outstr, "\n");
                 send(new_socket , outstr , strlen(outstr) , 0);
             }
-            else if(!strcmp(buffer, "GETTEMP")) {
-                temp = getTemperature();
-                sprintf(outstr, "OK %5.2f\n", temp);
-                send(new_socket , outstr , strlen(outstr) , 0);
-            }
             else if(!strcmp(buffer, "QUIT")) {
                 quit_protocol = true;     // it will allow us to get out of while loop
                 strcpy(outstr, "BYE 200");
@@ -268,114 +275,7 @@ Void serverSocketTask(UArg arg0, UArg arg1)
     return;
 }
 
-/*
- *  ======== httpTask ========
- *  Makes a HTTP GET request
- */
-Void httpTask(UArg arg0, UArg arg1)
-{
-    bool moreFlag = false;
-    char data[64], *s1, *s2;
-    int ret, temp_received=0, len;
-    struct sockaddr_in addr;
 
-    HTTPCli_Struct cli;
-    HTTPCli_Field fields[3] = {
-        { HTTPStd_FIELD_NAME_HOST, HOSTNAME },
-        { HTTPStd_FIELD_NAME_USER_AGENT, USER_AGENT },
-        { NULL, NULL }
-    };
-
-    while(1) {
-
-        System_printf("Sending a HTTP GET request to '%s'\n", HOSTNAME);
-        System_flush();
-
-        HTTPCli_construct(&cli);
-
-        HTTPCli_setRequestFields(&cli, fields);
-
-        ret = HTTPCli_initSockAddr((struct sockaddr *)&addr, HOSTNAME, 0);
-        if (ret < 0) {
-            HTTPCli_destruct(&cli);
-            System_printf("httpTask: address resolution failed\n");
-            continue;
-        }
-
-        ret = HTTPCli_connect(&cli, (struct sockaddr *)&addr, 0, NULL);
-        if (ret < 0) {
-            HTTPCli_destruct(&cli);
-            System_printf("httpTask: connect failed\n");
-            continue;
-        }
-
-        ret = HTTPCli_sendRequest(&cli, HTTPStd_GET, REQUEST_URI, false);
-        if (ret < 0) {
-            HTTPCli_disconnect(&cli);
-            HTTPCli_destruct(&cli);
-            System_printf("httpTask: send failed");
-            continue;
-        }
-
-        ret = HTTPCli_getResponseStatus(&cli);
-        if (ret != HTTPStd_OK) {
-            HTTPCli_disconnect(&cli);
-            HTTPCli_destruct(&cli);
-            System_printf("httpTask: cannot get status");
-            continue;
-        }
-
-        System_printf("HTTP Response Status Code: %d\n", ret);
-
-        ret = HTTPCli_getResponseField(&cli, data, sizeof(data), &moreFlag);
-        if (ret != HTTPCli_FIELD_ID_END) {
-            HTTPCli_disconnect(&cli);
-            HTTPCli_destruct(&cli);
-            System_printf("httpTask: response field processing failed\n");
-            continue;
-        }
-
-        len = 0;
-        do {
-            ret = HTTPCli_readResponseBody(&cli, data, sizeof(data), &moreFlag);
-            if (ret < 0) {
-                HTTPCli_disconnect(&cli);
-                HTTPCli_destruct(&cli);
-                System_printf("httpTask: response body processing failed\n");
-                moreFlag = false;
-            }
-            else {
-                // string is read correctly
-                // find "temp:" string
-                //
-                s1=strstr(data, "temp");
-                if(s1) {
-                    if(temp_received) continue;     // temperature is retrieved before, continue
-                    // is s1 is not null i.e. "temp" string is found
-                    // search for comma
-                    s2=strstr(s1, ",");
-                    if(s2) {
-                        *s2=0;                      // put end of string
-                        strcpy(tempstr, s1+6);      // copy the string
-                        temp_received = 1;
-                    }
-                }
-            }
-
-            len += ret;     // update the total string length received so far
-        } while (moreFlag);
-
-        System_printf("Received %d bytes of payload\n", len);
-        System_printf("Temperature %s\n", tempstr);
-        System_flush();                                         // write logs to console
-
-        HTTPCli_disconnect(&cli);                               // disconnect from openweathermap
-        HTTPCli_destruct(&cli);
-        Semaphore_post(semaphore0);                             // activate socketTask
-
-        Task_sleep(5000);                                       // sleep 5 seconds
-    }
-}
 
 bool createTasks(void)
 {
@@ -533,20 +433,100 @@ Void heartBeatTask (UArg arg1, UArg arg2){
         System_flush();
 }
 
+void getTimeStr(char *str)
+{
+    // dummy get time as string function
+    // time needs to be gotten from NTP servers
+    // This code needs to be improved
+    //
+    strcpy(str, "2021-01-25 10:30:00");
+}
 /*
- int year, month, day, hour, minutes, seconds;
- Void Timer_ISR(UArg arg1) // executed every second
- {
- // post semaphore
- SWI_post(swi1);
- }
- Void SWI_ISR(UArg arg1)
- {
- // update seconds, then minutes if seconds exceeds 60
- // update others if necessary
- }
- */
+Void Timer_ISR(UArg arg1) // executed every second
+{
+    Swi_post(swi0);
 
+}
+Void SWI_ISR(UArg arg1)
+{
+// update seconds, then minutes if seconds exceeds 60
+// update others if necessary
+
+            Semaphore_post(semaphore2);
+            Semaphore_pend(semaphore3,BIOS_WAIT_FOREVER);
+            instant_time  = temp_time[0]*16777216 +  temp_time[1]*65536 + temp_time[2]*256 + temp_time[3]; // Calculating current time
+            instant_time += 10800;
+            instant_time += ctr++;
+            System_printf("TIME: %s", ctime(&instant_time)); //convert time value to string and printf
+
+            System_flush();
+
+
+}
+
+
+
+
+
+Void ntpSocketTask(UArg arg0, UArg arg1)
+{
+    while(1){
+        // wait for the semaphore that httpTask() will signal
+        // when temperature string is retrieved from api.openweathermap.org site
+        //
+        Semaphore_pend(semaphore2, BIOS_WAIT_FOREVER);
+
+
+        GPIO_write(Board_LED0, 1); // turn on the LED
+
+        // connect to SocketTest program on the system with given IP/port
+        // send hello message whihc has a length of 5.
+        //
+        connectNTP("128.138.140.44", 37,instant_time, strlen(instant_time));
+
+        Semaphore_post(semaphore3);
+        GPIO_write(Board_LED0, 0);  // turn off the LED
+
+    }
+
+}
+
+void connectNTP(char *serverIP, int serverPort, char *data, int size)
+{
+  int sockfd, connStat, numSend;
+        bool retval=false;
+        struct sockaddr_in serverAddr;
+
+        sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (sockfd == -1) {
+            System_printf("Socket not created");
+            close(sockfd);
+            return false;
+        }
+
+        memset(&serverAddr, 0, sizeof(serverAddr));  // clear serverAddr structure
+        serverAddr.sin_family = AF_INET;
+        serverAddr.sin_port = htons(serverPort);     // convert port # to network order
+        inet_pton(AF_INET, serverIP, &(serverAddr.sin_addr));
+
+        connStat = connect(sockfd, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
+        if(connStat < 0) {
+            System_printf("sendData2Server::Error while connecting to server\n");
+        }
+        else {
+            numSend = send(sockfd, data, size, 0);       // send data to the server
+            if(numSend < 0) {
+                System_printf("sendData2Server::Error while sending data to server\n");
+            }
+            else {
+                retval = true;      // we successfully sent the temperature string
+            }
+        }
+        System_flush();
+        close(sockfd);
+        return retval;
+    }
+*/
 /*
  *  ======== main ========
  */
